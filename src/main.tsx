@@ -152,12 +152,142 @@ function Home({ navigate }: { navigate: (to: string) => void }) {
 function EventCard({ event, navigate }: { event: EventView; navigate: (to: string) => void }) { return <article className="event-card" onClick={() => navigate(`/events/${event.slug}`)}><div className="event-image" style={{ background: event.hero_image_url ? `url(${event.hero_image_url}) center/cover` : demoBackground(event.name) }}><div className="poster-word">{event.name.toUpperCase().slice(0, 16)}</div><span className="tag">{(event.tags?.[0] || (event.featured ? 'FEATURED' : 'MNG EVENT')).toUpperCase()}</span><span className="heart">♡</span><div className="date-badge"><b>{event.event_date ? new Date(`${event.event_date}T00:00:00`).getDate() : '—'}</b><span>{event.event_date ? new Intl.DateTimeFormat('en-US', { month: 'short' }).format(new Date(`${event.event_date}T00:00:00`)).toUpperCase() : 'TBA'}</span></div></div><div className="event-body"><div className="event-title"><h3>{event.name}</h3><ArrowRight size={17}/></div><p>{event.subtitle || 'MNG verified experience'}</p><div className="event-meta"><span><CalendarDays size={14}/>{dateLabel(event.event_date)} · {timeLabel(event.start_time)}</span><span><MapPin size={14}/>{event.location || 'Location TBA'}</span></div><div className="event-bottom"><span>{event.price ? <>From <b>{money(event.price)}</b></> : 'Pricing TBA'}</span><span className="availability"><span className="mini-bar"><i style={{ width: `${event.progress}%` }}/></span>{event.progress}% sold</span></div></div></article>; }
 
 function EventPage({ slug, navigate }: { slug: string; navigate: (to: string) => void }) {
-  const [event, setEvent] = useState<EventView | null>(null); const [selected, setSelected] = useState(''); const [qty, setQty] = useState(1); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
-  useEffect(() => { let alive=true; (async()=>{ try{ if(!supabase) throw new Error('Supabase is not configured.'); const {data:e,error:eErr}=await supabase.from('events').select('id,slug,name,subtitle,description,location,event_date,start_time,hero_image_url,poster_image_url,mobile_banner_url,tags,featured,show_on_home,status').eq('slug',slug).eq('status','published').single(); if(eErr) throw eErr; const {data:p,error:pErr}=await supabase.from('pass_types').select('id,event_id,name,description,price_paise,inventory,sold,active,display_order').eq('event_id',e.id).eq('active',true).order('display_order',{ascending:true}); if(pErr) throw pErr; const passes=(p||[]) as PassRow[]; const inventory=passes.reduce((s,x)=>s+Math.max(0,x.inventory),0); const sold=passes.reduce((s,x)=>s+Math.max(0,x.sold),0); const view={...(e as EventRow),passes,price:passes.length?Math.min(...passes.map(x=>Number(x.price_paise)))/100:0,progress:inventory?Math.round((sold/inventory)*100):0}; if(alive){setEvent(view);setSelected(passes[0]?.id || '');setLoading(false);} }catch(e){alive&&setError(e instanceof Error?e.message:'Unable to load event.');alive&&setLoading(false);} })(); return()=>{alive=false}; },[slug]);
-  if(loading)return <div><Header navigate={navigate}/><main className="event-page"><div className="empty"><h2>Loading event…</h2></div></main></div>;
-  if(error||!event)return <div><Header navigate={navigate}/><main className="event-page"><button className="back" onClick={()=>navigate('/')}>← Back</button><div className="empty"><h2>Event not found</h2><p>{error}</p></div></main></div>;
-  const current=event.passes.find(p=>p.id===selected)||event.passes[0]; const available=current?Math.max(0,current.inventory-current.sold):0; const total=current?Number(current.price_paise)/100*qty:0;
-  return <div><Header navigate={navigate}/><main className="event-page"><button className="back" onClick={()=>navigate('/')}>← Back to events</button><div className="event-hero"><div className="big-art" style={{background:event.hero_image_url?`url(${event.hero_image_url}) center/cover`:demoBackground(event.name)}}><div className="big-word">{event.name.toUpperCase().slice(0,18)}</div><span className="tag">MNG VERIFIED</span></div><div className="event-info"><div className="kicker">MNG VERIFIED EVENT</div><h1>{event.name}</h1><p className="subtitle">{event.subtitle || 'An MNG verified experience'}</p><div className="info-list"><span><CalendarDays/>{dateLabel(event.event_date)} · {timeLabel(event.start_time)}</span><span><MapPin/>{event.location || 'Location TBA'}</span></div><p className="description">{event.description || 'An unforgettable experience curated by Mars Nova Global. Your digital ticket is generated after verified payment.'}</p>{event.progress>0&&<div className="event-fomo"><Flame size={16}/> {event.progress}% of the released inventory is sold</div>}</div></div><section className="booking"><div><div className="kicker">CHOOSE YOUR PASS</div><h2>Make it your night.</h2>{event.passes.length?event.passes.map(p=>{const left=Math.max(0,p.inventory-p.sold);return <button key={p.id} className={`pass-row ${selected===p.id?'selected':''}`} disabled={left<=0} onClick={()=>{setSelected(p.id);setQty(1)}}><span><b>{p.name}</b><small>{p.description || (left>0?`${left} available`:'Sold out')}</small></span><strong>{money(Number(p.price_paise)/100)}</strong></button>}):<div className="empty"><p>No active passes available yet.</p></div>}</div><aside className="order-card"><div className="order-top"><span>Your booking</span><Ticket size={18}/></div>{current?<><div className="qty"><span>{current.name}</span><div><button onClick={()=>setQty(Math.max(1,qty-1))}>−</button><b>{qty}</b><button onClick={()=>setQty(Math.min(Math.max(1,available),qty+1))}>+</button></div></div><div className="order-total"><span>Total</span><b>{money(total)}</b></div><button className="primary full" disabled={available<=0}>Continue to secure payment <ArrowRight size={18}/></button><small className="secure"><ShieldCheck size={14}/> The server will revalidate price and inventory before Razorpay.</small></>:<small className="secure">Choose an available pass.</small>}</aside></section></main></div>;
+  const [event, setEvent] = useState<EventView | null>(null);
+  const [selected, setSelected] = useState('');
+  const [qty, setQty] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [paying, setPaying] = useState(false);
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        if (!supabase) throw new Error('Supabase is not configured.');
+        const { data: e, error: eErr } = await supabase
+          .from('events')
+          .select('id,slug,name,subtitle,description,location,event_date,start_time,hero_image_url,poster_image_url,mobile_banner_url,tags,featured,show_on_home,status')
+          .eq('slug', slug)
+          .eq('status', 'published')
+          .single();
+        if (eErr) throw eErr;
+        const { data: p, error: pErr } = await supabase
+          .from('pass_types')
+          .select('id,event_id,name,description,price_paise,inventory,sold,active,display_order')
+          .eq('event_id', e.id)
+          .eq('active', true)
+          .order('display_order', { ascending: true });
+        if (pErr) throw pErr;
+        const passes = (p || []) as PassRow[];
+        const inventory = passes.reduce((sum, x) => sum + Math.max(0, x.inventory), 0);
+        const sold = passes.reduce((sum, x) => sum + Math.max(0, x.sold), 0);
+        const view = {
+          ...(e as EventRow),
+          passes,
+          price: passes.length ? Math.min(...passes.map(x => Number(x.price_paise))) / 100 : 0,
+          progress: inventory ? Math.round((sold / inventory) * 100) : 0,
+        };
+        if (alive) {
+          setEvent(view);
+          setSelected(passes[0]?.id || '');
+          setLoading(false);
+        }
+      } catch (e) {
+        if (alive) {
+          setError(e instanceof Error ? e.message : 'Unable to load event.');
+          setLoading(false);
+        }
+      }
+    })();
+    return () => { alive = false; };
+  }, [slug]);
+
+  const loadRazorpay = async () => {
+    const existing = (window as unknown as { Razorpay?: unknown }).Razorpay;
+    if (existing) return;
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Unable to load Razorpay checkout.'));
+      document.body.appendChild(script);
+    });
+  };
+
+  const startCheckout = async () => {
+    if (!event || !current) return;
+    setPaying(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch('/.netlify/functions/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_id: event.id,
+          pass_type_id: current.id,
+          quantity: qty,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || 'Unable to create checkout order.');
+
+      await loadRazorpay();
+      const RazorpayConstructor = (window as unknown as { Razorpay?: new (options: Record<string, unknown>) => { open: () => void } }).Razorpay;
+      if (!RazorpayConstructor) throw new Error('Razorpay checkout is unavailable.');
+
+      const razorpay = new RazorpayConstructor({
+        key: data.razorpay_key_id,
+        amount: data.amount_paise,
+        currency: 'INR',
+        name: 'Mars Nova Global',
+        description: `${event.name} · ${current.name}`,
+        order_id: data.razorpay_order_id,
+        theme: { color: '#0b63f6' },
+        handler: async (payment: { razorpay_order_id?: string; razorpay_payment_id?: string; razorpay_signature?: string }) => {
+          try {
+            const verifyResponse = await fetch('/.netlify/functions/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                order_id: data.order_id,
+                razorpay_order_id: payment.razorpay_order_id,
+                razorpay_payment_id: payment.razorpay_payment_id,
+                razorpay_signature: payment.razorpay_signature,
+              }),
+            });
+            const verifyData = await verifyResponse.json().catch(() => ({}));
+            if (!verifyResponse.ok) throw new Error(verifyData?.error || 'Payment verification failed.');
+            setSuccess(`Payment verified in TEST mode. MNG order ${data.order_number} is recorded.`);
+          } catch (e) {
+            setError(e instanceof Error ? e.message : 'Payment verification failed.');
+          } finally {
+            setPaying(false);
+          }
+        },
+        modal: {
+          ondismiss: () => setPaying(false),
+        },
+      });
+      razorpay.open();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to start checkout.');
+      setPaying(false);
+    }
+  };
+
+  if (loading) return <div><Header navigate={navigate}/><main className="event-page"><div className="empty"><h2>Loading event…</h2></div></main></div>;
+  if (error && !event) return <div><Header navigate={navigate}/><main className="event-page"><button className="back" onClick={() => navigate('/')}>← Back</button><div className="empty"><h2>Event not found</h2><p>{error}</p></div></main></div>;
+  if (!event) return null;
+
+  const current = event.passes.find(p => p.id === selected) || event.passes[0];
+  const available = current ? Math.max(0, current.inventory - current.sold) : 0;
+  const total = current ? Number(current.price_paise) / 100 * qty : 0;
+
+  return <div><Header navigate={navigate}/><main className="event-page"><button className="back" onClick={() => navigate('/')}>← Back to events</button><div className="event-hero"><div className="big-art" style={{ background: event.hero_image_url ? `url(${event.hero_image_url}) center/cover` : demoBackground(event.name) }}><div className="big-word">{event.name.toUpperCase().slice(0, 18)}</div><span className="tag">MNG VERIFIED</span></div><div className="event-info"><div className="kicker">MNG VERIFIED EVENT</div><h1>{event.name}</h1><p className="subtitle">{event.subtitle || 'An MNG verified experience'}</p><div className="info-list"><span><CalendarDays/>{dateLabel(event.event_date)} · {timeLabel(event.start_time)}</span><span><MapPin/>{event.location || 'Location TBA'}</span></div><p className="description">{event.description || 'An unforgettable experience curated by Mars Nova Global. Your digital ticket is generated after verified payment.'}</p>{event.progress > 0 && <div className="event-fomo"><Flame size={16}/> {event.progress}% of the released inventory is sold</div>}</div></div><section className="booking"><div><div className="kicker">CHOOSE YOUR PASS</div><h2>Make it your night.</h2>{event.passes.length ? event.passes.map(p => { const left = Math.max(0, p.inventory - p.sold); return <button key={p.id} className={`pass-row ${selected === p.id ? 'selected' : ''}`} disabled={left <= 0 || paying} onClick={() => { setSelected(p.id); setQty(1); setError(''); setSuccess(''); }}><span><b>{p.name}</b><small>{p.description || (left > 0 ? `${left} available` : 'Sold out')}</small></span><strong>{money(Number(p.price_paise) / 100)}</strong></button>; }) : <div className="empty"><p>No active passes available yet.</p></div>}</div><aside className="order-card"><div className="order-top"><span>Your booking</span><Ticket size={18}/></div>{current ? <><div className="qty"><span>{current.name}</span><div><button disabled={paying} onClick={() => setQty(Math.max(1, qty - 1))}>−</button><b>{qty}</b><button disabled={paying} onClick={() => setQty(Math.min(Math.max(1, available), qty + 1))}>+</button></div></div><div className="order-total"><span>Total</span><b>{money(total)}</b></div>{error && <div className="form-error checkout-message">{error}</div>}{success && <div className="form-success checkout-message">{success}</div>}<button className="primary full" disabled={available <= 0 || paying} onClick={() => void startCheckout()}>{paying ? 'Opening secure checkout…' : 'Continue to secure payment'} <ArrowRight size={18}/></button><small className="secure"><ShieldCheck size={14}/> TEST MODE · Server revalidates price and inventory before Razorpay.</small></> : <small className="secure">Choose an available pass.</small>}</aside></section></main></div>;
 }
 
 function Admin({ navigate }: { navigate: (to: string) => void }) {
