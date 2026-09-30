@@ -261,8 +261,15 @@ function EventPage({ slug, navigate }: { slug: string; navigate: (to: string) =>
               }),
             });
             const verifyData = await verifyResponse.json().catch(() => ({}));
-            if (!verifyResponse.ok) throw new Error(verifyData?.error || 'Payment verification failed.');
-            setSuccess(`Payment verified in TEST mode. MNG order ${data.order_number} is recorded.`);
+           if (!verifyResponse.ok) {
+  throw new Error(verifyData?.error || 'Payment verification failed.');
+}
+
+navigate(
+  `/ticket/${encodeURIComponent(data.order_id)}?payment_id=${encodeURIComponent(
+    payment.razorpay_payment_id || '',
+  )}`,
+);
           } catch (e) {
             setError(e instanceof Error ? e.message : 'Payment verification failed.');
           } finally {
@@ -335,6 +342,42 @@ function PartnerAdmin(){return <div className="admin-grid"><div className="panel
 
 function Partner({navigate}:{navigate:(to:string)=>void}){return <div><Header navigate={navigate}/><main className="partner-page"><div className="login-card"><div className="login-mark">✦</div><div className="kicker">MNG PARTNER PORTAL</div><h1>Sell tickets.<br/><span>No app required.</span></h1><p>Reseller login is the next module. This route is already reserved for your partner network.</p><button className="ghost full" onClick={()=>navigate('/')}>← Back to public website</button></div></main></div>}
 
-function App(){const {route,navigate}=useRoute();if(route.startsWith('/admin'))return <Admin navigate={navigate}/>;if(route.startsWith('/partner'))return <Partner navigate={navigate}/>;if(route.startsWith('/events/'))return <EventPage slug={route.split('/')[2] || ''} navigate={navigate}/>;return <Home navigate={navigate}/>}
+function App() {
+  const { route, navigate } = useRoute();
 
-createRoot(document.getElementById('root')!).render(<App/>);
+  if (route.startsWith('/admin')) {
+    return <Admin navigate={navigate} />;
+  }
+
+  if (route.startsWith('/partner')) {
+    return <Partner navigate={navigate} />;
+  }
+
+  if (route.startsWith('/ticket/')) {
+    const ticketPath = route.slice('/ticket/'.length);
+    const [orderIdPart, queryPart = ''] = ticketPath.split('?');
+
+    const orderId = decodeURIComponent(orderIdPart || '');
+    const params = new URLSearchParams(queryPart);
+    const paymentId = params.get('payment_id') || '';
+
+    return (
+      <TicketConfirmation
+        orderId={orderId}
+        paymentId={paymentId}
+        navigate={navigate}
+      />
+    );
+  }
+
+  if (route.startsWith('/events/')) {
+    return (
+      <EventPage
+        slug={route.split('/')[2] || ''}
+        navigate={navigate}
+      />
+    );
+  }
+
+  return <Home navigate={navigate} />;
+}
