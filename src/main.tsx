@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { ArrowRight, CalendarDays, Check, ChevronRight, Flame, LogOut, MapPin, Menu, Plus, Search, ShieldCheck, Sparkles, Ticket, UserRound, X, Zap } from 'lucide-react';
 import './styles.css';
 import TicketConfirmation from './TicketConfirmation';
+import TicketScanner from './TicketScanner';
 import { supabase } from '../lib/supabase';
 
 type EventRow = {
@@ -305,8 +306,20 @@ function Admin({ navigate }: { navigate: (to: string) => void }) {
   if(checking)return <div className="portal"><main className="portal-main"><div className="empty"><h2>Checking Admin access…</h2></div></main></div>;
   if(!session)return <div className="portal"><main className="portal-main"><form className="login-card" onSubmit={e=>{e.preventDefault();void login()}}><div className="login-mark">✦</div><div className="kicker">MNG ADMIN</div><h1>Control your<br/><span>ticketing system.</span></h1><p>Sign in with your Supabase admin account.</p><label>Email<input type="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@example.com"/></label><label>Password<input type="password" required value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••"/></label>{error&&<div className="form-error">{error}</div>}<button className="primary full" type="submit">Sign in <ArrowRight size={18}/></button><button className="ghost full" type="button" onClick={()=>navigate('/')}>← Public website</button></form></main></div>;
   const logout=async()=>{if(supabase)await supabase.auth.signOut();setSession(null);};
-  return <div className="portal"><aside className="sidebar"><button className="brand side-brand" onClick={()=>navigate('/')}>✦ MARS NOVA</button><div className="side-kicker">ADMIN CONSOLE</div>{['Dashboard','Events','Pass Types','Orders','Partners','Homepage','Marketing','Settings'].map(t=><button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{t}</button>)}<button className="side-back" onClick={()=>navigate('/')}>← Public website</button><button className="side-logout" onClick={()=>void logout()}><LogOut size={14}/> Sign out</button></aside><main className="portal-main"><div className="portal-top"><div><div className="kicker">ADMIN CONSOLE</div><h1>{tab}</h1></div><div className="admin-user">{session.user.email}</div></div>{tab==='Dashboard'?<AdminDashboard/>:tab==='Events'?<AdminEvents/>:tab==='Pass Types'?<AdminPasses/>:tab==='Partners'?<PartnerAdmin/>:<div className="empty"><Sparkles size={28}/><h2>{tab}</h2><p>This module is coming next. The navigation is already reserved for it.</p></div>}</main></div>;
-}
+  return <div className="portal"><aside className="sidebar"><button className="brand side-brand" onClick={()=>navigate('/')}> MARS NOVA GLOBAL</button><div className="side-kicker">ADMIN CONSOLE</div>{['Dashboard','Scanner','Events','Pass Types','Orders','Partners','Homepage','Marketing','Settings'].map(t=><button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{t}</button>)}
+    className={tab===t?'active':''}
+    onClick={()=>setTab(t)}
+  >
+    {t}
+  </button>
+)}
+    key={t}
+    className={tab===t?'active':''}
+    onClick={()=>setTab(t)}
+  >
+    {t}
+  </button>
+)}
 
 function AdminDashboard(){
   const [events,setEvents]=useState<EventRow[]>([]); const [passes,setPasses]=useState<PassRow[]>([]); const [loading,setLoading]=useState(true);
