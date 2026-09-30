@@ -20,6 +20,25 @@ const env=(name:string)=>{
   return v;
 };
 
+const rpc = async (supabaseUrl:string, serviceRoleKey:string, orderId:string, paymentId:string) => {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/mng_finalize_paid_order`, {
+    method:'POST',
+    headers:{
+      apikey:serviceRoleKey,
+      Authorization:`Bearer ${serviceRoleKey}`,
+      'Content-Type':'application/json',
+      Accept:'application/json',
+    },
+    body:JSON.stringify({p_order_id:orderId,p_payment_id:paymentId}),
+  });
+  const text=await response.text();
+  if(!response.ok) throw new Error('PAYMENT_FINALIZATION_FAILED');
+  let data:unknown;
+  try { data=JSON.parse(text); } catch { data=null; }
+  const count=Array.isArray(data) ? data[0] : data;
+  return Number(count || 0);
+};
+
 export const handler = async (event:NetlifyEvent):Promise<NetlifyResponse> => {
   if(event.httpMethod==='OPTIONS') return json(204,null);
   if(event.httpMethod!=='POST') return json(405,{error:'Method Not Allowed'});
@@ -39,22 +58,26 @@ export const handler = async (event:NetlifyEvent):Promise<NetlifyResponse> => {
     const razorpayOrderId=typeof body.razorpay_order_id==='string'?body.razorpay_order_id:'';
     const paymentId=typeof body.razorpay_payment_id==='string'?body.razorpay_payment_id:'';
     const signature=typeof body.razorpay_signature==='string'?body.razorpay_signature:'';
-    if(!orderId||!razorpayOrderId||!paymentId||!signature) return json(400,{error:'Incomplete payment verification request.'});
+    if(!orderId||!razorpayOrderId||!paymentId||!signature) {
+      return json(400,{error:'Incomplete payment verification request.'});
+    }
 
     const expected=createHmac('sha256',razorpaySecret).update(`${razorpayOrderId}|${paymentId}`).digest('hex');
     const expectedBuf=Buffer.from(expected,'utf8');
     const receivedBuf=Buffer.from(signature,'utf8');
-    if(expectedBuf.length!==receivedBuf.length || !timingSafeEqual(expectedBuf,receivedBuf)) return json(400,{error:'Payment signature verification failed.'});
+    if(expectedBuf.length!==receivedBuf.length || !timingSafeEqual(expectedBuf,receivedBuf)) {
+      return json(400,{error:'Payment signature verification failed.'});
+    }
 
-    const update=await fetch(`${supabaseUrl}/rest/v1/orders?id=eq.${encodeURIComponent(orderId)}`,{
-      method:'PATCH',
-      headers:{apikey:serviceRoleKey,Authorization:`Bearer ${serviceRoleKey}`,'Content-Type':'application/json',Prefer:'return=representation'},
-      body:JSON.stringify({razorpay_payment_id:paymentId,payment_status:'authorized'}),
-    });
-    if(!update.ok) return json(502,{error:'Payment verified but order could not be updated.'});
+    const ticketCount=await rpc(supabaseUrl,serviceRoleKey,orderId,paymentId);
 
-    return json(200,{verified:true,order_id:orderId,razorpay_payment_id:paymentId});
+    return json(200,{verified:true,order_id:orderId,razorpay_payment_id:paymentId,ticket_count:ticketCount});
   } catch(e) {
-    return json(400,{error:e instanceof Error?e.message:'Unable to verify payment.'});
+    const msg=e instanceof Error?e.message:'Unable to verify payment.';
+    const safe=msg==='ORDER_NOT_FOUND'?'Order not found.':
+      msg==='ORDER_NOT_PAYABLE'?'This order is no longer payable.':
+      msg==='RESERVATION_MISSING'?'Ticket reservation could not be finalized.':
+      msg==='PAYMENT_FINALIZATION_FAILED'?'Payment was verified, but ticket issuance is still pending.':'Unable to verify payment right now.';
+    return json(400,{error:safe});
   }
 };
