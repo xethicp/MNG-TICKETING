@@ -110,6 +110,70 @@ const getStaffRole = async (
   return rows[0]?.role || null;
 };
 
+const getOrderNumber = async (
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  ticketId: string,
+): Promise<string | null> => {
+  try {
+    const ticketResponse = await fetch(
+      `${supabaseUrl}/rest/v1/tickets` +
+        `?select=order_id` +
+        `&id=eq.${encodeURIComponent(ticketId)}` +
+        `&limit=1`,
+      {
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          Accept: 'application/json',
+        },
+      },
+    );
+
+    if (!ticketResponse.ok) {
+      return null;
+    }
+
+    const tickets =
+      (await ticketResponse.json()) as Array<{
+        order_id?: string | null;
+      }>;
+
+    const orderId = tickets[0]?.order_id;
+
+    if (!orderId) {
+      return null;
+    }
+
+    const orderResponse = await fetch(
+      `${supabaseUrl}/rest/v1/orders` +
+        `?select=order_number` +
+        `&id=eq.${encodeURIComponent(orderId)}` +
+        `&limit=1`,
+      {
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          Accept: 'application/json',
+        },
+      },
+    );
+
+    if (!orderResponse.ok) {
+      return null;
+    }
+
+    const orders =
+      (await orderResponse.json()) as Array<{
+        order_number?: string | null;
+      }>;
+
+    return orders[0]?.order_number || null;
+  } catch {
+    return null;
+  }
+};
+
 const checkIn = async (
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -154,9 +218,24 @@ const checkIn = async (
 
   const result = JSON.parse(responseText);
 
-  return Array.isArray(result)
+  const parsedResult = Array.isArray(result)
     ? result[0]
     : result;
+
+  if (!parsedResult?.ticket_id) {
+    return parsedResult;
+  }
+
+  const orderNumber = await getOrderNumber(
+    supabaseUrl,
+    serviceRoleKey,
+    parsedResult.ticket_id,
+  );
+
+  return {
+    ...parsedResult,
+    order_number: orderNumber,
+  };
 };
 
 export const handler = async (
@@ -206,7 +285,8 @@ export const handler = async (
 
     if (!user?.id) {
       return json(401, {
-        error: 'Your staff session is invalid or expired.',
+        error:
+          'Your staff session is invalid or expired.',
       });
     }
 
@@ -222,7 +302,8 @@ export const handler = async (
       role !== 'event_manager'
     ) {
       return json(403, {
-        error: 'You are not authorised to scan tickets.',
+        error:
+          'You are not authorised to scan tickets.',
       });
     }
 
@@ -252,7 +333,8 @@ export const handler = async (
 
     if (!result) {
       return json(500, {
-        error: 'Ticket validation returned no result.',
+        error:
+          'Ticket validation returned no result.',
       });
     }
 
@@ -261,6 +343,7 @@ export const handler = async (
         valid: false,
         already_used: true,
         ticket_number: result.ticket_number,
+        order_number: result.order_number,
         event_name: result.event_name,
         pass_name: result.pass_name,
         checked_in_at: result.checked_in_at,
@@ -271,6 +354,7 @@ export const handler = async (
       valid: true,
       already_used: false,
       ticket_number: result.ticket_number,
+      order_number: result.order_number,
       event_name: result.event_name,
       pass_name: result.pass_name,
       checked_in_at: result.checked_in_at,
@@ -302,16 +386,22 @@ export const handler = async (
       });
     }
 
-    if (message.includes('TICKET_CHECKIN_CONFLICT')) {
+    if (
+      message.includes(
+        'TICKET_CHECKIN_CONFLICT',
+      )
+    ) {
       return json(409, {
         valid: false,
-        error: 'This ticket was just scanned. Please scan again.',
+        error:
+          'This ticket was just scanned. Please scan again.',
       });
     }
 
     return json(500, {
       valid: false,
-      error: 'Ticket validation failed. Please try again.',
+      error:
+        'Ticket validation failed. Please try again.',
     });
   }
 };
