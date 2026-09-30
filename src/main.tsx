@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowRight, CalendarDays, Check, ChevronRight, Flame, LogOut, MapPin, Menu, Plus, Search, ShieldCheck, Sparkles, Ticket, UserRound, X, Zap } from 'lucide-react';
 import './styles.css';
+import TicketConfirmation from './TicketConfirmation';
 import { supabase } from '../lib/supabase';
 
 type EventRow = {
