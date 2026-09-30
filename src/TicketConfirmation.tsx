@@ -306,7 +306,11 @@ const downloadShareCard = (
 
   ctx.fillStyle = 'rgba(255,255,255,.62)';
   ctx.font = '500 22px Arial';
-  ctx.fillText('Secure ticketing · Real experiences · Mars Nova Global', 72, 1715);
+  ctx.fillText(
+    'Secure ticketing · Real experiences · Mars Nova Global',
+    72,
+    1715,
+  );
 
   ctx.fillStyle = '#ffffff';
   ctx.font = '700 27px Arial';
@@ -314,7 +318,11 @@ const downloadShareCard = (
 
   ctx.fillStyle = 'rgba(255,255,255,.45)';
   ctx.font = '500 19px Arial';
-  ctx.fillText('Share the moment. Keep the ticket private.', 72, 1830);
+  ctx.fillText(
+    'Share the moment. Keep the ticket private.',
+    72,
+    1830,
+  );
 
   const link = document.createElement('a');
 
@@ -384,10 +392,11 @@ export default function TicketConfirmation({
   useEffect(() => {
     if (!data?.event?.id || !supabase) return;
 
+    const client = supabase;
     let alive = true;
 
     const loadDiscover = async () => {
-      const { data: events } = await supabase
+      const { data: events } = await client
         .from('events')
         .select(
           'id,slug,name,subtitle,venue,location,event_date,start_time,hero_image_url',
